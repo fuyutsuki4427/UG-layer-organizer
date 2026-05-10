@@ -18,6 +18,7 @@ import NXOpen
 import NXOpen.UF
 import NXOpen.Features
 import NXOpen.Assemblies
+import NXOpen.Layer
 from typing import List, Tuple, Dict, Any
 
 # =============================================================================
@@ -533,16 +534,30 @@ def main():
     listing_window.WriteLine(f"  处理完成: {stats['moved']} 移动, {stats['skipped']} 跳过, {stats['failed']} 失败")
     listing_window.WriteLine("")
     
-    # 刷新显示，让图层变更在建模视图中生效
+    # 刷新显示让图层变更在建模视图中生效
+    # 
+    # Step 1: 特征树更新
     # 来源: E:\NX2406\UGOPEN\pythonStubs\NXOpen\__init__.pyi
     #       class Session: @property UpdateManager -> Update
     #       class Update: def DoUpdate(undo_mark: int) -> int
     if undo_mark_id is not None:
         try:
             session.UpdateManager.DoUpdate(undo_mark_id)
-            listing_window.WriteLine("✓ 显示已刷新")
         except Exception as e:
-            listing_window.WriteLine(f"⚠ 刷新显示失败: {str(e)}")
+            listing_window.WriteLine(f"  ⚠ Update 失败: {str(e)}")
+    
+    # Step 2: 强制视图根据图层可见性重绘
+    # 来源: E:\NX2406\UGOPEN\pythonStubs\NXOpen\Layer\__init__.pyi
+    #       class LayerManager: def ChangeStates(state_array, fitAll)
+    #       class StateInfo: Layer (int), State (Layer.State)
+    try:
+        state_info = NXOpen.Layer.StateInfo()
+        state_info.Layer = TARGET_LAYER
+        state_info.State = NXOpen.Layer.State.Hidden
+        work_part.Layers.ChangeStates([state_info], True)
+        listing_window.WriteLine("✓ 视图已刷新")
+    except Exception as e:
+        listing_window.WriteLine(f"  ⚠ 视图刷新失败: {str(e)}")
     
     # 生成详细报告
     generate_report(listing_window, work_part, stats, moved_details, skipped_details, failed_details)
