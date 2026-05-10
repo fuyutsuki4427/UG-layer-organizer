@@ -1,0 +1,10 @@
+# NX / UG temporary files
+*.prt
+*.txt
+*.log
+*.dlx
+*.dll
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
