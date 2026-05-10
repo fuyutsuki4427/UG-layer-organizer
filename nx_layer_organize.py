@@ -535,10 +535,11 @@ def main():
     
     # 刷新显示，让图层变更在建模视图中生效
     # 来源: E:\NX2406\UGOPEN\pythonStubs\NXOpen\__init__.pyi
-    #       class Update: static def DoUpdate(undo_mark: int) -> int
+    #       class Session: @property UpdateManager -> Update
+    #       class Update: def DoUpdate(undo_mark: int) -> int
     if undo_mark_id is not None:
         try:
-            NXOpen.Update.DoUpdate(undo_mark_id)
+            session.UpdateManager.DoUpdate(undo_mark_id)
             listing_window.WriteLine("✓ 显示已刷新")
         except Exception as e:
             listing_window.WriteLine(f"⚠ 刷新显示失败: {str(e)}")
