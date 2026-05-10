@@ -236,25 +236,17 @@ def collect_candidate_objects(work_part: NXOpen.Part) -> List[NXOpen.Displayable
         pass
     
     try:
-        # 遍历 Features (可能包含 Sketch 等)
-        if hasattr(work_part, 'Features') and work_part.Features is not None:
-            for feature in work_part.Features:
-                if feature is not None:
-                    # SketchFeature 继承自 Feature
-                    if isinstance(feature, NXOpen.Features.SketchFeature):
-                        candidates.append(feature)
-    except Exception as e:
-        pass
-    
-    try:
-        # 尝试获取 Datum 对象
-        # 注意: Datum 对象可能在不同位置
+        # 遍历 Datum 对象 (基准平面/轴/坐标系等)
+        # 注意: Datum 对象可能在不同位置，用 try-except 包裹
         if hasattr(work_part, 'Datums'):
             for datum in work_part.Datums:
-                if datum is not None:
+                if datum is not None and isinstance(datum, NXOpen.DisplayableObject):
                     candidates.append(datum)
     except Exception as e:
         pass
+    
+    # 注意: 不收集 SketchFeature — Feature 类不继承 DisplayableObject，没有 Layer 属性
+    # Sketch 中的几何元素（曲线、点等）会通过 Curves/Points 集合覆盖
     
     # 获取组件
     try:
@@ -462,6 +454,16 @@ def main():
             obj_name = getattr(obj, 'Name', 'Unnamed')
             obj_type = get_object_type_name(obj)
             original_layer = get_object_layer(obj)
+            
+            # 跳过不支持 Layer 的对象 (如 Feature 等非 DisplayableObject)
+            if original_layer < 0:
+                stats['skipped'] += 1
+                skipped_details.append({
+                    'name': obj_name,
+                    'type': obj_type,
+                    'reason': 'Object does not support Layer property'
+                })
+                continue
             
             # 更新检测标志
             if is_component_object(obj):
