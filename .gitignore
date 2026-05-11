@@ -9,6 +9,5 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
-# Agent orchestration (project-level configs are manual and removed)
+# Agent orchestration (auto-generated)
 .sisyphus/
-AGENTS.md
