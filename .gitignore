@@ -8,3 +8,7 @@ __pycache__/
 *.pyc
 .DS_Store
 Thumbs.db
+
+# Agent orchestration (project-level configs are manual and removed)
+.sisyphus/
+AGENTS.md
