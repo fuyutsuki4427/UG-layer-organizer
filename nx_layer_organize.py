@@ -181,13 +181,18 @@ def get_object_layer(obj: NXOpen.DisplayableObject) -> int:
 
 
 # =============================================================================
-# 移动对象到指定图层
-# 来源: E:\NX2406\UGOPEN\pythonStubs\NXOpen\__init__.pyi
-#       class DisplayableObject: @Layer.setter def Layer(self, layer: int)
+# 移动对象到指定图层 (已弃用)
+# 注意: 直接设置 obj.Layer 不会更新视图显示，
+#       推荐使用 Part.Layers.MoveDisplayableObjects() 批量移动。
+# 新来源: E:\NX2406\UGOPEN\pythonStubs\NXOpen\Layer\__init__.pyi
+#          class LayerManager: def MoveDisplayableObjects(new_layer, object_array)
+# 原来源: E:\NX2406\UGOPEN\pythonStubs\NXOpen\__init__.pyi
+#          class DisplayableObject: @Layer.setter def Layer(self, layer: int)
 # =============================================================================
 def move_object_to_layer(obj: NXOpen.DisplayableObject, target_layer: int) -> Tuple[bool, str]:
     """
-    将对象移动到指定图层
+    将对象移动到指定图层 (直接设置 Layer 属性，不更新视图)
+    已弃用: 推荐使用 Part.Layers.MoveDisplayableObjects() 批量移动。
     返回: (是否成功, 错误信息)
     """
     try:
@@ -446,6 +451,11 @@ def main():
     # 处理每个对象
     listing_window.WriteLine("开始处理对象...")
     
+    # 累积需要移动的对象，后续统一通过 MoveDisplayableObjects 批量移动
+    # 来源: E:\NX2406\UGOPEN\pythonStubs\NXOpen\Layer\__init__.pyi
+    #       class LayerManager: def MoveDisplayableObjects(new_layer, object_array)
+    moved_objects = []  # List[NXOpen.DisplayableObject]
+    
     for obj in candidates:
         try:
             if obj is None:
@@ -497,24 +507,16 @@ def main():
                 })
                 continue
             
-            # 尝试移动对象
-            success, error = move_object_to_layer(obj, TARGET_LAYER)
-            
-            if success:
-                stats['moved'] += 1
-                moved_details.append({
-                    'name': obj_name,
-                    'type': obj_type,
-                    'original_layer': original_layer
-                })
-            else:
-                stats['failed'] += 1
-                failed_details.append({
-                    'name': obj_name,
-                    'type': obj_type,
-                    'original_layer': original_layer,
-                    'error': error
-                })
+            # 记录需要移动的对象，后续通过 LayerManager.MoveDisplayableObjects() 批量执行
+            # 来源: E:\NX2406\UGOPEN\pythonStubs\NXOpen\Layer\__init__.pyi
+            #       class LayerManager: def MoveDisplayableObjects(new_layer, object_array)
+            moved_objects.append(obj)
+            stats['moved'] += 1
+            moved_details.append({
+                'name': obj_name,
+                'type': obj_type,
+                'original_layer': original_layer
+            })
                 
         except Exception as e:
             # 单个对象失败不应中断整个流程
@@ -536,9 +538,29 @@ def main():
     listing_window.WriteLine(f"  处理完成: {stats['moved']} 移动, {stats['skipped']} 跳过, {stats['failed']} 失败")
     listing_window.WriteLine("")
     
+    # =========================================================================
     # 刷新显示让图层变更在建模视图中生效
-    # 
-    # Step 1: 特征树更新
+    # 使用 Displayed Part（而非 Work Part）以确保 UI 正确刷新
+    # =========================================================================
+    
+    # Step 1: 批量移动对象到目标图层
+    # 来源: E:\NX2406\UGOPEN\pythonStubs\NXOpen\Layer\__init__.pyi
+    #       class LayerManager: def MoveDisplayableObjects(new_layer, object_array)
+    #       说明: NX 推荐的移动方式，DisplayableObject.SetLayer 不会修正显示
+    if len(moved_objects) > 0:
+        try:
+            display_part = session.Parts.Display
+            if display_part is not None:
+                display_part.Layers.MoveDisplayableObjects(TARGET_LAYER, moved_objects)
+                listing_window.WriteLine("✓ 批量移动完成")
+            else:
+                # Fallback: 使用 Work Part
+                work_part.Layers.MoveDisplayableObjects(TARGET_LAYER, moved_objects)
+                listing_window.WriteLine("✓ 批量移动完成 (使用 Work Part)")
+        except Exception as e:
+            listing_window.WriteLine(f"  ⚠ 批量移动失败: {str(e)}")
+    
+    # Step 2: 特征树更新
     # 来源: E:\NX2406\UGOPEN\pythonStubs\NXOpen\__init__.pyi
     #       class Session: @property UpdateManager -> Update
     #       class Update: def DoUpdate(undo_mark: int) -> int
@@ -548,16 +570,24 @@ def main():
         except Exception as e:
             listing_window.WriteLine(f"  ⚠ Update 失败: {str(e)}")
     
-    # Step 2: 强制视图根据图层可见性重绘
+    # Step 3: 设置 255 图层在当前视图为 Hidden 并强制更新视图
     # 来源: E:\NX2406\UGOPEN\pythonStubs\NXOpen\Layer\__init__.pyi
-    #       class LayerManager: def ChangeStates(state_array, fitAll)
+    #       class LayerManager: def SetObjectsVisibilityOnLayer(view, state_array, do_update)
     #       class StateInfo: Layer (int), State (Layer.State)
+    # 来源: E:\NX2406\UGOPEN\pythonStubs\NXOpen\__init__.pyi
+    #       class ViewCollection: def Refresh(self) -> None
     try:
-        state_info = NXOpen.Layer.StateInfo()
-        state_info.Layer = TARGET_LAYER
-        state_info.State = NXOpen.Layer.State.Hidden
-        work_part.Layers.ChangeStates([state_info], True)
-        listing_window.WriteLine("✓ 视图已刷新")
+        display_part = session.Parts.Display
+        if display_part is not None:
+            view = display_part.ModelingViews.WorkView
+            state_info = NXOpen.Layer.StateInfo()
+            state_info.Layer = TARGET_LAYER
+            state_info.State = NXOpen.Layer.State.Hidden
+            display_part.Layers.SetObjectsVisibilityOnLayer(view, [state_info], True)
+            display_part.Views.Refresh()
+            listing_window.WriteLine("✓ 视图已刷新")
+        else:
+            listing_window.WriteLine("  ⚠ 无法获取 Displayed Part，跳过视图刷新")
     except Exception as e:
         listing_window.WriteLine(f"  ⚠ 视图刷新失败: {str(e)}")
     
