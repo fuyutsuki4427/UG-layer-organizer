@@ -11,3 +11,6 @@ Thumbs.db
 
 # Agent orchestration (auto-generated)
 .sisyphus/
+
+# Project-level system prompt (local reference only)
+AGENTS.md
